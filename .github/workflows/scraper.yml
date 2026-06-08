@@ -1,0 +1,36 @@
+name: ONPE Scraper
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # allow manual trigger
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Install Playwright browsers
+        run: playwright install chromium
+
+      - name: Run scraper (once)
+        run: python main.py --once
+        env:
+          ONPE_API_URL: ${{ secrets.ONPE_API_URL }}
+          ONPE_SESSION_HEADERS: ${{ secrets.ONPE_SESSION_HEADERS }}
+          DATA_DIR: ./data
+
+      - name: Upload snapshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: snapshots-${{ github.run_number }}
+          path: data/snapshots/
+          if-no-files-found: warn
