@@ -241,7 +241,7 @@ async def run_once(config: Config) -> None:
     except ParseError as exc:
         logger.error("Parse failed: %s", exc)
         print(f"[{scraped_at}] ERROR: parse failed — {exc}")
-        sys.exit(1)
+        return
 
     # --- Read prev for delta (before saving, so we don't read ourselves) ---
     prev_snapshot_id = storage.get_last_snapshot_id()
