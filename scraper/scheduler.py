@@ -48,7 +48,10 @@ class Scraper:
         def _shutdown() -> None:
             logger.info("Shutting down...")
             self._scheduler.remove_all_jobs()
-            self._scheduler.shutdown(wait=False)
+            try:
+                self._scheduler.shutdown(wait=False)
+            except Exception:
+                pass
             stop_event.set()
 
         loop.add_signal_handler(signal.SIGTERM, _shutdown)

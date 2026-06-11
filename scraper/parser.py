@@ -15,7 +15,7 @@ import json
 import logging
 from typing import Any
 
-from models.snapshot import Snapshot
+from models.snapshot import RegionResult, Snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ def parse_snapshot(
     candidatos_raw: bytes,
     scraped_at: str,
     response_hash: str,
+    regions: list[RegionResult] | None = None,
 ) -> Snapshot:
     """Parse totales + candidatos API responses into a Snapshot.
 
@@ -57,14 +58,25 @@ def parse_snapshot(
         ParseError: If JSON is malformed or required fields are missing.
     """
     totales: dict[str, Any] = _unwrap(totales_raw, "totales")
-    candidatos: list[dict[str, Any]] = _unwrap(candidatos_raw, "candidatos")
+    all_items: list[dict[str, Any]] = _unwrap(candidatos_raw, "candidatos")
 
     if not isinstance(totales, dict):
         raise ParseError(f"totales.data: expected dict, got {type(totales).__name__}")
-    if not isinstance(candidatos, list) or len(candidatos) < 2:
-        raise ParseError(f"candidatos.data: expected list of >=2 items, got {candidatos!r}")
+    if not isinstance(all_items, list) or len(all_items) < 2:
+        raise ParseError(f"candidatos.data: expected list of >=2 items, got {all_items!r}")
 
-    c1, c2 = candidatos[0], candidatos[1]
+    # Filter real candidates by non-empty DNI — excludes blancos (code 80) and nulos (code 81)
+    candidates = [c for c in all_items if c.get("dniCandidato")]
+    if len(candidates) < 2:
+        raise ParseError(f"Expected >=2 real candidates, found {len(candidates)}: {all_items!r}")
+
+    # Sort by votes descending so candidato_1 is always the leading candidate
+    candidates.sort(key=lambda c: c.get("totalVotosValidos", 0), reverse=True)
+    c1, c2 = candidates[0], candidates[1]
+
+    # Extract blancos and nulos from the same response
+    blancos_item = next((c for c in all_items if c.get("codigoAgrupacionPolitica") == "80"), None)
+    nulos_item = next((c for c in all_items if c.get("codigoAgrupacionPolitica") == "81"), None)
 
     logger.info(
         "Parsing: actas=%.2f%% | %s=%.3f%% | %s=%.3f%%",
@@ -85,8 +97,8 @@ def parse_snapshot(
         candidato_2_nombre=str(c2["nombreCandidato"]),
         candidato_2_votos=int(c2["totalVotosValidos"]),
         candidato_2_pct=float(c2["porcentajeVotosValidos"]),
-        votos_blancos=0,   # not available in these endpoints
-        votos_nulos=0,     # not available in these endpoints
+        votos_blancos=int(blancos_item["totalVotosValidos"]) if blancos_item else 0,
+        votos_nulos=int(nulos_item["totalVotosValidos"]) if nulos_item else 0,
         actas_total=int(totales["totalActas"]),
-        regions=[],        # regional breakdown not yet available
+        regions=regions or [],
     )
